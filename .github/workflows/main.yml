@@ -30,37 +30,61 @@ jobs:
         run: |
           yes | sdkmanager --licenses || true
 
-      - name: Install Android SDK packages
+      - name: Install SDK packages
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Install Gradle 8.9
+      - name: Install Gradle
         run: |
           wget https://services.gradle.org/distributions/gradle-8.9-bin.zip
           unzip -q gradle-8.9-bin.zip
           echo "$PWD/gradle-8.9/bin" >> $GITHUB_PATH
 
+      - name: Find Android source ZIP
+        run: |
+          echo "Files in repository:"
+          ls -la
+          ZIP_FILE=$(find . -maxdepth 1 -type f -name '*.zip' | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "No source ZIP found in repository root"
+            exit 1
+          fi
+          echo "Found: $ZIP_FILE"
+          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
+
       - name: Extract Android project
         run: |
-          test -f Liam_Msoffe_Shopping_Center_v2.zip
-          unzip -o Liam_Msoffe_Shopping_Center_v2.zip -d extracted
+          mkdir -p extracted
+          unzip -o "$ZIP_FILE" -d extracted
+          echo "Extracted files:"
+          find extracted -maxdepth 4 -type f
 
-      - name: Locate Android project
+      - name: Locate Android app
         run: |
-          find extracted -name build.gradle -o -name build.gradle.kts
-          test -f extracted/LiamAndroid/app/build.gradle
+          APP_DIR=$(find extracted -type f -name 'build.gradle' | grep '/app/build.gradle$' | head -n 1 | sed 's#/app/build.gradle##')
+          if [ -z "$APP_DIR" ]; then
+            echo "Android app build.gradle not found"
+            find extracted -type f
+            exit 1
+          fi
+          echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
 
       - name: Build APK
         run: |
-          cd extracted/LiamAndroid
+          cd "$APP_DIR"
           gradle assembleDebug
 
-      - name: Verify APK
+      - name: Find generated APK
         run: |
-          test -f extracted/LiamAndroid/app/build/outputs/apk/debug/app-debug.apk
+          APK=$(find "$APP_DIR" -type f -name 'app-debug.apk' | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "APK was not generated"
+            exit 1
+          fi
+          echo "APK=$APK" >> $GITHUB_ENV
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Liam-Msoffe-Shopping-Center-APK
-          path: extracted/LiamAndroid/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.APK }}
